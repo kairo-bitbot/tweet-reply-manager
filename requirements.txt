@@ -1,0 +1,3 @@
+# Flask and database
+Flask==3.0.0
+playwright

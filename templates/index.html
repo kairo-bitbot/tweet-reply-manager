@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="description" content="Manage your Twitter replies workflow">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>">
+    <title>Tweet Reply Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div class="max-w-md mx-auto px-4 py-6">
+        <!-- Header -->
+        <header class="mb-6">
+            <h1 class="text-2xl font-bold text-white mb-1">Tweet Reply Manager</h1>
+            <p class="text-gray-400 text-sm">Build your presence, one reply at a time</p>
+        </header>
+
+        <!-- Add Tweet Form -->
+        <section class="bg-gray-800 rounded-xl p-4 mb-6 shadow-lg">
+            <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <span>➕</span> Add Tweet
+            </h2>
+            <form action="/add" method="POST" class="space-y-3">
+                <div>
+                    <input 
+                        type="url" 
+                        name="url" 
+                        placeholder="Tweet URL (x.com/...)" 
+                        required
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                    >
+                </div>
+                <div>
+                    <input 
+                        type="text" 
+                        name="tweet_text" 
+                        placeholder="Tweet content (optional - for better replies)" 
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                    >
+                </div>
+                <button 
+                    type="submit" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors"
+                >
+                    Generate Replies
+                </button>
+            </form>
+        </section>
+
+        <!-- Pending Tweets -->
+        {% if pending %}
+        <section class="mb-8">
+            <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <span class="text-green-400">●</span> Pending ({{ pending|length }})
+            </h2>
+            
+            {% for tweet in pending %}
+            <div class="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg border border-gray-700">
+                <div class="flex items-start justify-between mb-3">
+                    <a href="{{ tweet.url }}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm break-all">
+                        {{ tweet.url[:50] }}...
+                    </a>
+                    <a href="/delete/{{ tweet.id }}" class="text-red-400 hover:text-red-300 text-sm px-2">✕</a>
+                </div>
+                
+                <!-- Replies -->
+                {% set replies_list = tweet.replies.split('|||') if tweet.replies else [] %}
+                {% for reply in replies_list %}
+                <div class="bg-gray-700 rounded-lg p-3 mb-2">
+                    <p class="text-white text-sm mb-3">{{ reply }}</p>
+                    
+                    <!-- Feedback Buttons -->
+                    <div class="flex gap-2 flex-wrap">
+                        <button 
+                            onclick="toggleFeedback('like-{{ tweet.id }}-{{ loop.index0 }}')"
+                            class="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-full transition-colors"
+                        >
+                            👍 Like
+                        </button>
+                        <button 
+                            onclick="toggleFeedback('dislike-{{ tweet.id }}-{{ loop.index0 }}')"
+                            class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-full transition-colors"
+                        >
+                            👎 Dislike
+                        </button>
+                        <a 
+                            href="{{ tweet.url }}" 
+                            target="_blank"
+                            class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-full transition-colors"
+                        >
+                            📝 Post
+                        </a>
+                    </div>
+                    
+                    <!-- Feedback Form (hidden by default) -->
+                    <form action="/feedback/{{ tweet.id }}-{{ loop.index0 }}" method="POST" class="mt-3 hidden" id="form-like-{{ tweet.id }}-{{ loop.index0 }}">
+                        <input type="hidden" name="action" value="like">
+                        <select name="reason" class="w-full bg-gray-600 rounded px-2 py-1.5 text-sm mb-2">
+                            <option value="">Select reason...</option>
+                            <option value="natural">Sounds natural</option>
+                            <option value="on-brand">On brand</option>
+                            <option value="contextual">Perfect context</option>
+                            <option value="engaging">Good hook</option>
+                        </select>
+                        <input type="text" name="custom" placeholder="Custom feedback (optional)" class="w-full bg-gray-600 rounded px-2 py-1.5 text-sm mb-2">
+                        <button type="submit" class="w-full bg-green-600 text-white text-sm py-1.5 rounded">Save</button>
+                    </form>
+                    
+                    <form action="/feedback/{{ tweet.id }}-{{ loop.index0 }}" method="POST" class="mt-3 hidden" id="form-dislike-{{ tweet.id }}-{{ loop.index0 }}">
+                        <input type="hidden" name="action" value="dislike">
+                        <select name="reason" class="w-full bg-gray-600 rounded px-2 py-1.5 text-sm mb-2">
+                            <option value="">Why dislike?</option>
+                            <option value="salesy">Too salesy</option>
+                            <option value="generic">Too generic</option>
+                            <option value="off-topic">Off topic</option>
+                            <option value="long">Too long</option>
+                            <option value="awkward">Awward phrasing</option>
+                        </select>
+                        <input type="text" name="custom" placeholder="How to improve?" class="w-full bg-gray-600 rounded px-2 py-1.5 text-sm mb-2">
+                        <button type="submit" class="w-full bg-red-600 text-white text-sm py-1.5 rounded">Save</button>
+                    </form>
+                </div>
+                {% endfor %}
+                
+                <!-- Mark as Posted -->
+                <div class="mt-3 pt-3 border-t border-gray-600">
+                    <a href="/post/{{ tweet.id }}" class="block text-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg transition-colors">
+                        ✓ Mark as Posted
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <!-- Posted Tweets -->
+        {% if posted %}
+        <section>
+            <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <span class="text-gray-400">●</span> Posted ({{ posted|length }})
+            </h2>
+            
+            {% for tweet in posted %}
+            <div class="bg-gray-800 rounded-xl p-4 mb-3 opacity-60">
+                <a href="{{ tweet.url }}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm break-all">
+                    {{ tweet.url[:60] }}...
+                </a>
+                <p class="text-gray-500 text-xs mt-1">Posted {{ tweet.posted_at }}</p>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <!-- Footer -->
+        <footer class="mt-8 text-center text-gray-500 text-sm">
+            <p>Run locally • Accessible on local network</p>
+        </footer>
+    </div>
+
+    <script>
+        function toggleFeedback(id) {
+            // Hide all other forms
+            document.querySelectorAll('[id^="form-"]').forEach(form => {
+                form.classList.add('hidden');
+            });
+            
+            // Toggle the clicked form
+            const form = document.getElementById('form-' + id);
+            if (form) {
+                form.classList.toggle('hidden');
+            }
+        }
+        
+        // Auto-refresh every 60 seconds
+        setInterval(() => {
+            // Only refresh if no forms are open
+            const anyOpen = !document.querySelectorAll('[id^="form-"]').some(f => !f.classList.contains('hidden'));
+            if (anyOpen) {
+                window.location.reload();
+            }
+        }, 60000);
+    </script>
+</body>
+</html>
