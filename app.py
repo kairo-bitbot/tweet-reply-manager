@@ -299,6 +299,40 @@ def auto_add():
     db.commit()
     return {'added': added}
 
+@app.route('/api/sync', methods=['POST'])
+def sync_from_chat():
+    """Sync tweets directly from chat (accepts full data)"""
+    data = request.get_json()
+    tweets = data.get('tweets', [])  # Array of {url, replies: []}
+    
+    db = get_db()
+    added = []
+    
+    for tweet in tweets:
+        url = tweet.get('url')
+        replies = tweet.get('replies', [])
+        
+        if not url:
+            continue
+        
+        # Check if already exists
+        existing = db.execute('SELECT id FROM tweets WHERE url = ?', (url,)).fetchone()
+        if existing:
+            continue
+        
+        # Insert tweet
+        cursor = db.execute('INSERT INTO tweets (url) VALUES (?)', (url,))
+        tweet_id = cursor.lastrowid
+        
+        # Insert replies
+        for reply in replies:
+            db.execute('INSERT INTO replies (tweet_id, content) VALUES (?, ?)', (tweet_id, reply))
+        
+        added.append(url)
+    
+    db.commit()
+    return {'added': added}
+
 @app.route('/post/<int:tweet_id>')
 def mark_posted(tweet_id):
     db = get_db()
@@ -334,4 +368,4 @@ def delete_tweet(tweet_id):
 if __name__ == '__main__':
     init_db()
     # Bind to all interfaces for local network access
-    app.run(host='0.0.0.0', port=5060, debug=True)
+    app.run(host='0.0.0.0', port=5050, debug=True)
