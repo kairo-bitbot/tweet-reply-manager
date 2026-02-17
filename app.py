@@ -55,6 +55,15 @@ def init_db():
                 FOREIGN KEY (tweet_id) REFERENCES tweets(id)
             )
         ''')
+        # Learnings from disliked replies
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS learnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reply_content TEXT UNIQUE NOT NULL,
+                reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         db.commit()
 
 # Fetch tweet content using Playwright
@@ -212,6 +221,12 @@ def generate_reply_content(tweet_text, username):
     if len(tweet_text) < 50:
         replies.append(f"short and sweet")
     
+    # Filter out replies you've disliked before
+    db = get_db()
+    disliked = db.execute('SELECT reply_content FROM learnings').fetchall()
+    disliked_set = {d['reply_content'].lower() for d in disliked}
+    replies = [r for r in replies if r.lower() not in disliked_set]
+    
     return replies[:8]
 
 @app.route('/')
@@ -341,19 +356,45 @@ def mark_posted(tweet_id):
     db.commit()
     return redirect(url_for('index'))
 
-@app.route('/feedback/<int:reply_id>', methods=['POST'])
-def add_feedback(reply_id):
+@app.route('/feedback/<string:feedback_id>', methods=['POST'])
+def add_feedback(feedback_id):
+    """Handle feedback - format: tweet_id-index"""
+    try:
+        parts = feedback_id.split('-')
+        tweet_id = int(parts[0])
+        index = int(parts[1])
+    except (ValueError, IndexError):
+        return redirect(url_for('index'))
+    
     action = request.form.get('action')  # like or dislike
     reason = request.form.get('reason', '')
     custom = request.form.get('custom', '')
     
     db = get_db()
-    feedback = f"{action}:{reason}" if reason else action
-    if custom:
-        feedback += f" - {custom}"
     
-    db.execute('UPDATE replies SET feedback = ?, status = ? WHERE id = ?', 
-                (feedback, 'reviewed', reply_id))
+    # Get the reply by tweet_id and offset
+    replies = db.execute('SELECT id, content FROM replies WHERE tweet_id = ? AND status = "pending" ORDER BY id LIMIT 1 OFFSET ?', 
+                         (tweet_id, index)).fetchall()
+    
+    if replies:
+        reply_id = replies[0]['id']
+        reply_content = replies[0]['content']
+        
+        feedback = f"{action}:{reason}" if reason else action
+        if custom:
+            feedback += f" - {custom}"
+        
+        # If disliked, add to learnings so we avoid similar replies
+        if action == 'dislike':
+            db.execute('INSERT OR IGNORE INTO learnings (reply_content, reason) VALUES (?, ?)',
+                       (reply_content, reason or custom))
+            status = 'disliked'
+        else:
+            status = 'reviewed'
+        
+        db.execute('UPDATE replies SET feedback = ?, status = ? WHERE id = ?', 
+                    (feedback, status, reply_id))
+    
     db.commit()
     return redirect(url_for('index'))
 
@@ -364,6 +405,28 @@ def delete_tweet(tweet_id):
     db.execute('DELETE FROM tweets WHERE id = ?', (tweet_id,))
     db.commit()
     return redirect(url_for('index'))
+
+@app.route('/learnings')
+def learnings():
+    """View what you've learned from disliked replies"""
+    db = get_db()
+    learnings = db.execute('SELECT * FROM learnings ORDER BY created_at DESC').fetchall()
+    return render_template('learnings.html', learnings=learnings)
+
+@app.route('/clear-learnings')
+def clear_learnings():
+    """Clear all learnings"""
+    db = get_db()
+    db.execute('DELETE FROM learnings')
+    db.commit()
+    return redirect(url_for('index'))
+
+@app.route('/api/learnings')
+def api_learnings():
+    """Get learnings as JSON"""
+    db = get_db()
+    learnings = db.execute('SELECT * FROM learnings ORDER BY created_at DESC').fetchall()
+    return {'learnings': [dict(l) for l in learnings]}
 
 if __name__ == '__main__':
     init_db()

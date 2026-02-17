@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learnings - Tweet Reply Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div class="max-w-md mx-auto px-4 py-6">
+        <!-- Header -->
+        <header class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-white mb-1">Learnings</h1>
+                <p class="text-gray-400 text-sm">What you've taught me to avoid</p>
+            </div>
+            <a href="/" class="bg-gray-700 hover:bg-gray-600 p-2 rounded-lg">← Back</a>
+        </header>
+
+        {% if learnings %}
+        <section>
+            {% for learning in learnings %}
+            <div class="bg-gray-800 rounded-xl p-4 mb-3 border border-red-900/50">
+                <p class="text-white text-sm mb-2">"{{ learning.reply_content }}"</p>
+                <p class="text-gray-500 text-xs">
+                    Reason: {{ learning.reason or 'No reason' }} • {{ learning.created_at[:10] }}
+                </p>
+            </div>
+            {% endfor %}
+        </section>
+        
+        <div class="mt-6">
+            <a href="/clear-learnings" class="block text-center bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg">
+                🗑️ Clear All Learnings
+            </a>
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+            <p class="text-gray-500 mb-4">No learnings yet!</p>
+            <p class="text-gray-600 text-sm">Dislike replies to teach me what to avoid.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
